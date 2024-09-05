@@ -1,0 +1,79 @@
+#!/bin/bash
+
+# Hardening Script para Kali Linux
+# Este script realiza várias etapas de hardening no sistema.
+
+# 1. Atualização do sistema
+echo "Atualizando o sistema..."
+sudo apt update && sudo apt upgrade -y
+
+# Explicação: Manter o sistema atualizado é crucial, pois atualizações trazem patches de segurança que corrigem vulnerabilidades.
+
+# 2. Configurando Firewall (UFW - Uncomplicated Firewall)
+echo "Configurando o firewall..."
+sudo apt install ufw -y
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw enable
+
+# Explicação: O UFW é uma ferramenta de firewall fácil de usar. Configuramos o firewall para negar todo o tráfego de entrada e permitir o de saída. Isso minimiza a superfície de ataque, permitindo apenas conexões que iniciamos.
+
+# 3. Desabilitar serviços desnecessários
+echo "Desabilitando serviços desnecessários..."
+for service in cups bluetooth avahi-daemon
+do
+    sudo systemctl disable $service
+    sudo systemctl stop $service
+done
+
+# Explicação: Desabilitar serviços que não são necessários (como Bluetooth e impressão) reduz os vetores de ataque. O Avahi-daemon (responsável por descoberta de redes) pode ser explorado, então é bom desativá-lo.
+
+# 4. Configurar permissões no diretório /home
+echo "Configurando permissões no diretório /home..."
+sudo chmod -R go-rwx /home/*
+
+# Explicação: Isso garante que apenas os proprietários dos diretórios no `/home` tenham acesso a seus arquivos, evitando que outros usuários possam ler ou modificar os arquivos de outros.
+
+# 5. Configurar regras de senha
+echo "Configurando regras de senha..."
+sudo apt install libpam-cracklib -y
+sudo sed -i '/pam_cracklib.so/s/retry=3 minlen=8 difok=3/retry=3 minlen=12 difok=4/' /etc/pam.d/common-password
+
+# Explicação: O módulo PAM Cracklib reforça as políticas de senha. Aqui, configuramos para exigir senhas de no mínimo 12 caracteres e com 4 diferenças entre a senha nova e a anterior.
+
+# 6. Proteger o arquivo sudoers
+echo "Protegendo o arquivo sudoers..."
+sudo chmod 440 /etc/sudoers
+
+# Explicação: O arquivo sudoers define quem pode usar comandos sudo. Proteger este arquivo evita modificações indevidas.
+
+# 7. Configurar auditoria de logs (auditd)
+echo "Instalando e configurando o auditd..."
+sudo apt install auditd -y
+sudo systemctl enable auditd
+sudo systemctl start auditd
+
+# Explicação: O `auditd` monitora eventos no sistema, como tentativas de login, modificações de arquivos críticos, etc., criando um registro útil para identificar possíveis tentativas de invasão.
+
+# 8. Configurar logs de login no arquivo /etc/rsyslog.conf
+echo "Habilitando logs detalhados de login/logout..."
+sudo sed -i '/auth,authpriv/s/#//' /etc/rsyslog.conf
+sudo systemctl restart rsyslog
+
+# Explicação: Isso habilita logs mais detalhados de eventos de autenticação, como login e logout, permitindo monitorar atividades suspeitas.
+
+# 9. Bloquear usuários após 3 tentativas de login falhas
+echo "Configurando bloqueio após falhas de login..."
+sudo sed -i '/pam_tally2.so/s/required/requisite/' /etc/pam.d/common-auth
+echo "auth required pam_tally2.so deny=3 unlock_time=600" | sudo tee -a /etc/pam.d/common-auth
+
+# Explicação: O PAM Tally2 permite bloquear contas após múltiplas tentativas de login falhas. Aqui, configuramos para bloquear o usuário após 3 tentativas falhas por 10 minutos.
+
+# 10. Desabilitar root login via SSH
+echo "Desabilitando root login via SSH..."
+sudo sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+sudo systemctl restart sshd
+
+# Explicação: Desabilitar login root via SSH reduz o risco de ataques de força bruta diretamente na conta root.
+
+echo "Hardening concluído!"
